@@ -1,0 +1,153 @@
+{
+  "info": {
+    "name": "Giross - CEPs Proximos API",
+    "description": "Suba a API, ajuste baseUrl e (se o .env tiver ADMIN_TOKEN) adminToken em Variables. Rode as pastas em ordem. A 1a consulta de um CEP novo leva ~30 s; a 2a vem do cache.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "cep", "value": "01310-100" },
+    { "key": "adminToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Consulta principal",
+      "item": [
+        {
+          "name": "GET /ceps-proximos/:cep (1a chamada - ate ~30s)",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/ceps-proximos/{{cep}}", "host": ["{{baseUrl}}"], "path": ["ceps-proximos", "{{cep}}"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "const body = pm.response.json();",
+            "pm.test('campos de topo', () => {",
+            "  pm.expect(body).to.have.property('cep_origem');",
+            "  pm.expect(body).to.have.property('endereco_origem');",
+            "  pm.expect(body.raio_km).to.eql(1);",
+            "  pm.expect(body.total_encontrados).to.eql(body.ceps_proximos.length);",
+            "});",
+            "const lista = body.ceps_proximos;",
+            "pm.test('cada item tem cep 00000-000 e distancia_km numerica', () => lista.forEach(i => {",
+            "  pm.expect(i.cep).to.match(/^\\d{5}-\\d{3}$/);",
+            "  pm.expect(i.distancia_km).to.be.a('number');",
+            "}));",
+            "pm.test('distancias entre 0 e 1 km', () => lista.forEach(i => pm.expect(i.distancia_km).to.be.within(0, 1)));",
+            "pm.test('no maximo 2 casas decimais', () => lista.forEach(i => pm.expect(Math.abs(i.distancia_km * 100 - Math.round(i.distancia_km * 100))).to.be.below(1e-9)));",
+            "pm.test('ordenada por distancia crescente', () => { for (let k = 1; k < lista.length; k++) pm.expect(lista[k].distancia_km).to.be.at.least(lista[k - 1].distancia_km); });",
+            "pm.test('sem repetidos e sem o CEP de origem', () => {",
+            "  const ceps = lista.map(i => i.cep);",
+            "  pm.expect(new Set(ceps).size).to.eql(ceps.length);",
+            "  pm.expect(ceps).to.not.include(body.cep_origem);",
+            "});",
+            "pm.collectionVariables.set('primeiraChamadaMs', pm.response.responseTime);",
+            "console.log('1a chamada: ' + pm.response.responseTime + ' ms | CEPs: ' + lista.length);"
+          ] } }]
+        },
+        {
+          "name": "GET /ceps-proximos/:cep (2a chamada - cache)",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/ceps-proximos/{{cep}}", "host": ["{{baseUrl}}"], "path": ["ceps-proximos", "{{cep}}"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "pm.test('vem do cache (< 1 s)', () => pm.expect(pm.response.responseTime).to.be.below(1000));",
+            "console.log('1a: ' + pm.collectionVariables.get('primeiraChamadaMs') + ' ms | 2a (cache): ' + pm.response.responseTime + ' ms');"
+          ] } }]
+        },
+        {
+          "name": "GET /ceps-proximos/01310100 (sem hifen - mesmo cache)",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/ceps-proximos/01310100", "host": ["{{baseUrl}}"], "path": ["ceps-proximos", "01310100"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status 200', () => pm.response.to.have.status(200));",
+            "pm.test('cep_origem com hifen', () => pm.expect(pm.response.json().cep_origem).to.eql('01310-100'));",
+            "pm.test('vem do cache (< 1 s)', () => pm.expect(pm.response.responseTime).to.be.below(1000));"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "2. Erros e casos de borda",
+      "item": [
+        {
+          "name": "CEP invalido - letras (400)",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/ceps-proximos/abc", "host": ["{{baseUrl}}"], "path": ["ceps-proximos", "abc"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 CEP_INVALIDO', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('CEP_INVALIDO'); });"
+          ] } }]
+        },
+        {
+          "name": "CEP invalido - 7 digitos (400)",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/ceps-proximos/0131010", "host": ["{{baseUrl}}"], "path": ["ceps-proximos", "0131010"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 CEP_INVALIDO', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('CEP_INVALIDO'); });"
+          ] } }]
+        },
+        {
+          "name": "CEP invalido - lixo após o CEP (400)",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/ceps-proximos/01310-100abc", "host": ["{{baseUrl}}"], "path": ["ceps-proximos", "01310-100abc"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 CEP_INVALIDO', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('CEP_INVALIDO'); });"
+          ] } }]
+        },
+        {
+          "name": "CEP inexistente (404)",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/ceps-proximos/00000000", "host": ["{{baseUrl}}"], "path": ["ceps-proximos", "00000000"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 CEP_NAO_ENCONTRADO', () => { pm.response.to.have.status(404); pm.expect(pm.response.json().error).to.eql('CEP_NAO_ENCONTRADO'); });"
+          ] } }]
+        },
+        {
+          "name": "Rota inexistente (404)",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/nao-existe", "host": ["{{baseUrl}}"], "path": ["nao-existe"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 ROTA_NAO_ENCONTRADA', () => { pm.response.to.have.status(404); pm.expect(pm.response.json().error).to.eql('ROTA_NAO_ENCONTRADA'); });"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "3. Delete Cache",
+      "item": [
+        {
+          "name": "DELETE /cache/:cep (com token)",
+          "request": { "method": "DELETE", "header": [{ "key": "x-admin-token", "value": "{{adminToken}}" }], "url": { "raw": "{{baseUrl}}/cache/{{cep}}", "host": ["{{baseUrl}}"], "path": ["cache", "{{cep}}"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 e mensagem de sucesso', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().message).to.include('invalidado'); });"
+          ] } }]
+        },
+        {
+          "name": "DELETE /cache/abc (CEP invalido - 400)",
+          "request": { "method": "DELETE", "header": [{ "key": "x-admin-token", "value": "{{adminToken}}" }], "url": { "raw": "{{baseUrl}}/cache/abc", "host": ["{{baseUrl}}"], "path": ["cache", "abc"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status 400', () => pm.response.to.have.status(400));"
+          ] } }]
+        },
+        {
+          "name": "DELETE /cache (limpa tudo, com token)",
+          "request": { "method": "DELETE", "header": [{ "key": "x-admin-token", "value": "{{adminToken}}" }], "url": { "raw": "{{baseUrl}}/cache", "host": ["{{baseUrl}}"], "path": ["cache"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 e mensagem de sucesso', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().message).to.include('limpo'); });"
+          ] } }]
+        },
+        {
+          "name": "DELETE /cache (SEM token - 401 se ADMIN_TOKEN ativo)",
+          "request": { "method": "DELETE", "header": [], "url": { "raw": "{{baseUrl}}/cache", "host": ["{{baseUrl}}"], "path": ["cache"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('401 (token exigido) ou 200 (sem ADMIN_TOKEN no servidor)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401]));",
+            "if (pm.response.code === 401) pm.test('NAO_AUTORIZADO', () => pm.expect(pm.response.json().error).to.eql('NAO_AUTORIZADO'));",
+            "console.log(pm.response.code === 401 ? 'ADMIN_TOKEN ativo' : 'ADMIN_TOKEN nao configurado: DELETE /cache aberto');"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "4. Infra",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 e status ok', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('ok'); });"
+          ] } }]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      PORT: 3000
+      NOMINATIM_USER_AGENT: ${NOMINATIM_USER_AGENT:-giross-ceps-proximos/1.0 (defina-um-contato-real@seudominio.com)}
+      # Cache compartilhado via Redis (se removido, a API usa cache em memoria).
+      REDIS_URL: redis://redis:6379
+      # Protege DELETE /cache (header x-admin-token). Lido do .env ao lado do compose
+      # ou do ambiente; se vazio, os endpoints ficam abertos (apenas desenvolvimento).
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
