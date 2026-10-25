@@ -114,6 +114,7 @@ describe('API', () => {
       expect(response.body).toEqual({
         cep_origem: '01310-100',
         endereco_origem: 'Avenida Paulista, Bela Vista, São Paulo - SP',
+        coordenadas_origem: { lat: ORIGIN.lat, lng: ORIGIN.lng },
         raio_km: 1,
         total_encontrados: 4,
         ceps_proximos: EXPECTED,

@@ -49,22 +49,27 @@ curl http://localhost:3000/ceps-proximos/01310-100
 | DELETE | `/cache`              | Limpa todo o cache                                         |
 | GET    | `/health`             | Health check                                               |
 
-Resposta real de `GET /ceps-proximos/01310-100` (trecho; no total foram 158 CEPs):
+Resposta real de `GET /ceps-proximos/01310-100` (trecho; no total foram 147 CEPs, o último a 0,99 km). `coordenadas_origem` é o ponto
+usado como centro do raio, para que a distância possa ser conferida de forma independente:
 
 ```json
 {
   "cep_origem": "01310-100",
   "endereco_origem": "Avenida Paulista, Bela Vista, São Paulo - SP",
+  "coordenadas_origem": { "lat": -23.5649942, "lng": -46.6517657 },
   "raio_km": 1,
-  "total_encontrados": 158,
+  "total_encontrados": 147,
   "ceps_proximos": [
-    { "cep": "01332-030", "distancia_km": 0.04 },
-    { "cep": "01310-200", "distancia_km": 0.07 },
-    { "cep": "01311-200", "distancia_km": 0.07 },
-    { "cep": "01332-000", "distancia_km": 0.08 }
+    { "cep": "01404-100", "distancia_km": 0.03 },
+    { "cep": "01311-100", "distancia_km": 0.05 },
+    { "cep": "01404-000", "distancia_km": 0.07 },
+    { "cep": "01310-940", "distancia_km": 0.09 }
   ]
 }
 ```
+
+O resultado depende dos dados do OSM no momento da consulta, então o total pode variar
+levemente com o tempo.
 
 ## Estratégia: como buscar CEPs num raio de 1 km
 
@@ -110,7 +115,7 @@ Em seguida, no servidor:
 
 **Por que essa estratégia?** Uma abordagem anterior (reverse-geocoding de ~24 pontos em
 anéis ao redor da origem) foi descartada: levava ~25 s só em chamadas serializadas ao
-Nominatim, encontrava no máximo 24 CEPs (a consulta Overpass acima achou 158 só na
+Nominatim, encontrava no máximo 24 CEPs (a consulta Overpass acima achou 147 só na
 região da Av. Paulista) e, pior, a distância reportada era a do *anel* (350/700/1000 m),
 não a distância real até o CEP.
 
@@ -121,7 +126,7 @@ não a distância real até o CEP.
 | **Cobertura** | Depende do OSM: CEPs sem `addr:postcode` mapeado não aparecem. Grandes centros têm boa cobertura; cidades pequenas e áreas rurais, esparsa. Não existe fonte pública, gratuita e completa de CEP com coordenadas no Brasil. |
 | **Distância** | Haversine até o objeto OSM mais próximo daquele CEP – e não até um "centro" do CEP, que a base não fornece. Para o raio de 1 km o erro da esfera é < 0,5 %. Um CEP que cobre uma rua longa aparece com a distância do ponto dela mais próximo da origem. |
 | **Origem** | A coordenada vem do Nominatim/OSM (ponto do CEP ou, na falta, do endereço), logo é aproximada: um CEP que cobre uma rua longa tem a origem num ponto dela, e a lista de vizinhos muda conforme esse ponto. |
-| **Latência (1ª consulta)** | 1 chamada ao Overpass: **30–45 s medidos** (Av. Paulista, 4 400+ objetos, 158+ CEPs). Esse tempo é do servidor público e **não depende do tamanho da consulta**: até uma consulta trivial (`node(1)`) levou ~37 s no mesmo horário; o conteúdo da resposta (JSON, CSV, nós/vias) também não mudou o tempo. O Overpass público ainda responde 502/429/504 quando lotado, então há retries com backoff, rotação de mirrors, orçamento total de tempo e 503 claro com `Retry-After`. |
+| **Latência (1ª consulta)** | 1 chamada ao Overpass: **30–45 s medidos** (Av. Paulista, 4 400+ objetos, 147 CEPs). Esse tempo é do servidor público e **não depende do tamanho da consulta**: até uma consulta trivial (`node(1)`) levou ~37 s no mesmo horário; o conteúdo da resposta (JSON, CSV, nós/vias) também não mudou o tempo. O Overpass público ainda responde 502/429/504 quando lotado, então há retries com backoff, rotação de mirrors, orçamento total de tempo e 503 claro com `Retry-After`. |
 | **Consultas repetidas** | ~50 ms, via cache (ver abaixo). Consultas simultâneas ao mesmo CEP compartilham uma única execução. |
 | **Alternativa para produção** | Base própria (ex.: CNEFE/IBGE ou base licenciada) em PostGIS/índice geoespacial: busca em milissegundos e cobertura completa, ao custo de ingestão e manutenção da base. É a evolução natural se esse endpoint for crítico. |
 

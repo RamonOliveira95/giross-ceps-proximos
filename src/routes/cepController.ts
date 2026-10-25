@@ -11,6 +11,7 @@ export async function getCepsProximos(req: Request, res: Response, next: NextFun
     res.status(200).json({
       cep_origem: formatCep(origem.cep),
       endereco_origem: origem.enderecoFormatado,
+      coordenadas_origem: { lat: origem.lat, lng: origem.lng },
       raio_km: env.nearbySearchRadiusMeters / 1000,
       total_encontrados: proximos.length,
       ceps_proximos: proximos.map((item) => ({

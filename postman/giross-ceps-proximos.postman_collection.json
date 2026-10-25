@@ -22,6 +22,7 @@
             "pm.test('campos de topo', () => {",
             "  pm.expect(body).to.have.property('cep_origem');",
             "  pm.expect(body).to.have.property('endereco_origem');",
+            "  pm.expect(body.coordenadas_origem).to.have.all.keys('lat', 'lng');",
             "  pm.expect(body.raio_km).to.eql(1);",
             "  pm.expect(body.total_encontrados).to.eql(body.ceps_proximos.length);",
             "});",
