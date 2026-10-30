@@ -22,11 +22,18 @@ function requireAdminToken(req: Request, _res: Response, next: NextFunction): vo
   next();
 }
 
+/**
+ * Endpoints auxiliares (diferencial) para invalidar o cache manualmente.
+ * Informa no campo 'storage' qual camada foi limpa ('memory' ou 'redis').
+ */
 router.delete('/cache/:cep', requireAdminToken, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const cep = validateCep(String(req.params.cep));
     await invalidateCep(cep);
-    res.status(200).json({ message: `Cache do CEP ${cep} invalidado com sucesso.` });
+    res.status(200).json({
+      message: `Cache do CEP ${cep} invalidado com sucesso.`,
+      storage: getCache().storageType,
+    });
   } catch (error) {
     next(error);
   }
@@ -34,8 +41,12 @@ router.delete('/cache/:cep', requireAdminToken, async (req: Request, res: Respon
 
 router.delete('/cache', requireAdminToken, async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    await getCache().clear();
-    res.status(200).json({ message: 'Cache limpo com sucesso.' });
+    const cache = getCache();
+    await cache.clear();
+    res.status(200).json({
+      message: 'Cache limpo com sucesso.',
+      storage: cache.storageType,
+    });
   } catch (error) {
     next(error);
   }

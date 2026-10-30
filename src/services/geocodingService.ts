@@ -49,8 +49,11 @@ async function searchNominatim(params: Record<string, string | number>): Promise
 }
 
 /**
- * Coordenadas do CEP no OSM: primeiro pelo proprio CEP (mesma base addr:postcode da busca
- * por raio) e, se o OSM nao o conhecer, pelo endereco.
+ * Coordenadas do CEP no OpenStreetMap:
+ * 1. Pelo proprio CEP (postalcode): precisao exata da base addr:postcode.
+ * 2. Pelo endereco completo com bairro (logradouro, bairro, cidade, UF): o bairro e
+ *    essencial para ruas extensas que atravessam multiplos bairros com CEPs distintos.
+ * 3. Fallback estruturado (street, city, state): caso o bairro nao esteja nomeado no OSM.
  */
 async function geocodePoint(address: CepAddress, cep: string): Promise<GeoPoint> {
   const byPostcode = await searchNominatim({ postalcode: `${cep.slice(0, 5)}-${cep.slice(5)}` });
@@ -61,6 +64,15 @@ async function geocodePoint(address: CepAddress, cep: string): Promise<GeoPoint>
     .join(', ');
   const byAddress = await searchNominatim({ q: addressQuery });
   if (byAddress) return byAddress;
+
+  if (address.logradouro && address.localidade) {
+    const byStructured = await searchNominatim({
+      street: address.logradouro,
+      city: address.localidade,
+      state: address.uf,
+    });
+    if (byStructured) return byStructured;
+  }
 
   throw new GeolocationNotFoundError(cep);
 }

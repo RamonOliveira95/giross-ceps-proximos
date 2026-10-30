@@ -2,7 +2,7 @@ services:
   api:
     build: .
     ports:
-      - '3000:3000'
+      - '${DOCKER_API_PORT:-3000}:3000'
     environment:
       PORT: 3000
       NOMINATIM_USER_AGENT: ${NOMINATIM_USER_AGENT:-giross-ceps-proximos/1.0 (defina-um-contato-real@seudominio.com)}
@@ -16,4 +16,6 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports:
+      - '6379:6379'
     restart: unless-stopped

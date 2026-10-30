@@ -1,16 +1,23 @@
 import Redis from 'ioredis';
 import { ICache } from './ICache';
+import { ExternalServiceError } from '../../utils/errors';
 
 const KEY_NAMESPACE = 'giross:';
 
-// Namespace "giross:" para que clear() nunca apague chaves de outras aplicacoes.
-// Falhas em get/set viram "cache miss": o cache e uma otimizacao e nao deve derrubar a API.
+/**
+ * Implementacao do cache usando Redis (diferencial).
+ *
+ * - Leituras (get) e gravacoes (set) toleram falhas: um Redis fora do ar vira
+ *   "cache miss" silencioso para nao derrubar as consultas normais da API.
+ * - Exclusoes explicitas (del, clear): se o Redis estiver indisponivel, lanca
+ *   ExternalServiceError (503) para nao fingir falsamente que o cache foi limpo.
+ */
 export class RedisCache implements ICache {
+  readonly storageType = 'redis' as const;
+
   constructor(private readonly client: Redis) {}
 
   static fromUrl(redisUrl: string): RedisCache {
-    // Sem fila offline e com timeout curto: Redis fora do ar vira "cache miss" imediato
-    // em vez de segurar as requisicoes enquanto o ioredis tenta reconectar.
     const client = new Redis(redisUrl, { maxRetriesPerRequest: 1, enableOfflineQueue: false, commandTimeout: 1000 });
     client.on('error', (error) => {
       // eslint-disable-next-line no-console -- visibilidade de falhas do Redis
@@ -42,6 +49,7 @@ export class RedisCache implements ICache {
       await this.client.del(KEY_NAMESPACE + key);
     } catch (error) {
       this.warn('del', error);
+      throw new ExternalServiceError('Redis', error);
     }
   }
 
@@ -53,6 +61,7 @@ export class RedisCache implements ICache {
       }
     } catch (error) {
       this.warn('clear', error);
+      throw new ExternalServiceError('Redis', error);
     }
   }
 

@@ -1,4 +1,5 @@
 process.env.API_RATE_LIMIT_PER_MINUTE = '2';
+process.env.REDIS_URL = '';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const request = require('supertest');

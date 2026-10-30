@@ -107,4 +107,10 @@ describe('RedisCache', () => {
     await expect(cache.get('k')).resolves.toBeUndefined();
     await expect(cache.set('k', 1, 10)).resolves.toBeUndefined();
   });
+
+  it('lanca ExternalServiceError em del/clear quando o Redis falha', async () => {
+    fake.failing = true;
+    await expect(cache.del('k')).rejects.toThrow('Redis');
+    await expect(cache.clear()).rejects.toThrow('Redis');
+  });
 });

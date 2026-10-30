@@ -8,6 +8,7 @@ process.env.OVERPASS_MAX_ROUNDS = '2';
 process.env.OVERPASS_BACKOFF_MS = '1';
 process.env.API_RATE_LIMIT_PER_MINUTE = '1000';
 process.env.ADMIN_TOKEN = 'segredo';
+process.env.REDIS_URL = '';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const request = require('supertest');
@@ -177,7 +178,7 @@ describe('API', () => {
       expect(response.body.ceps_proximos).toEqual(EXPECTED);
     });
 
-    it('geocodifica pelo endereco quando o OSM nao conhece o CEP (postalcode)', async () => {
+    it('geocodifica pelo endereco com bairro (q) quando o OSM nao conhece o CEP (postalcode)', async () => {
       brasilAddressMock('01310100');
       nock(NOMINATIM)
         .get('/search')
@@ -185,7 +186,28 @@ describe('API', () => {
         .reply(200, []);
       nock(NOMINATIM)
         .get('/search')
-        .query((q) => String(q.q).includes('Avenida Paulista'))
+        .query((q) => String(q.q).includes('Avenida Paulista') && String(q.q).includes('Bela Vista'))
+        .reply(200, originPoint);
+      nock(OVERPASS_A).post('/api/interpreter').reply(200, overpassBody);
+
+      const response = await request(app).get('/ceps-proximos/01310100');
+      expect(response.status).toBe(200);
+      expect(response.body.ceps_proximos).toEqual(EXPECTED);
+    });
+
+    it('faz fallback para busca estruturada (street/city/state) quando a busca por bairro nao retorna resultado', async () => {
+      brasilAddressMock('01310100');
+      nock(NOMINATIM)
+        .get('/search')
+        .query((q) => q.postalcode === '01310-100')
+        .reply(200, []);
+      nock(NOMINATIM)
+        .get('/search')
+        .query((q) => Boolean(q.q))
+        .reply(200, []);
+      nock(NOMINATIM)
+        .get('/search')
+        .query((q) => q.street === 'Avenida Paulista' && q.city === 'São Paulo')
         .reply(200, originPoint);
       nock(OVERPASS_A).post('/api/interpreter').reply(200, overpassBody);
 
@@ -196,7 +218,7 @@ describe('API', () => {
 
     it('retorna 404 GEOLOCALIZACAO_NAO_ENCONTRADA quando o Nominatim nao acha o CEP nem o endereco', async () => {
       brasilAddressMock('01310100');
-      nock(NOMINATIM).get('/search').query(true).times(2).reply(200, []);
+      nock(NOMINATIM).get('/search').query(true).times(3).reply(200, []);
 
       const response = await request(app).get('/ceps-proximos/01310100');
       expect(response.status).toBe(404);
@@ -220,6 +242,23 @@ describe('API', () => {
       const response = await request(app).get('/ceps-proximos/01310100');
       expect(response.status).toBe(200);
       expect(response.body.ceps_proximos).toEqual(EXPECTED);
+    });
+
+    it('rejeita resposta com erro de memoria (Query ran out of memory) e retorna 503 com Retry-After', async () => {
+      mockBrasilApi('01310100');
+      nock(OVERPASS_A).post('/api/interpreter').times(2).reply(200, {
+        elements: [],
+        remark: 'runtime error: Query ran out of memory in "query" at line 1. It would need at least 0 MB of RAM to continue.',
+      });
+      nock(OVERPASS_B).post('/api/interpreter').times(2).reply(200, {
+        elements: [],
+        remark: 'runtime error: Query ran out of memory.',
+      });
+
+      const res = await request(app).get('/ceps-proximos/01310100');
+      expect(res.status).toBe(503);
+      expect(res.body.error).toBe('SERVICO_EXTERNO_INDISPONIVEL');
+      expect(res.headers['retry-after']).toBe('30');
     });
 
     it('retorna 503 (e nao cacheia) quando todos os mirrors do Overpass falham ou devolvem erro parcial', async () => {
